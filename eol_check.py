@@ -1,11 +1,10 @@
 import requests
-from datetime import date
+import json
+import csv
+from datetime import date, datetime
 
-# ---------------FONCTION------------------
+# ------------------ FONCTION API ------------------
 def check_eol(os_name, version):
-    """
-    Vérifie si une version d'OS est encore supportée via l'API endoflife.date
-    """
     try:
         url = f"https://endoflife.date/api/{os_name}.json"
         response = requests.get(url)
@@ -14,37 +13,53 @@ def check_eol(os_name, version):
         print("Erreur API :", e)
         return None
 
-    # On cherche la version exacte dans la liste obtenue
     for entry in data:
         if entry.get("cycle") == version:
             return entry
 
     return None
-# ---------------END FONCTION------------------
 
-# __________________VARIABLES______________________
-os_name = "debian"
-version = "13"         
-#__________________END VARIABLE________________________
-info = check_eol(os_name, version)
+# ------------------ READ the file system.csv ------------------
+def load_csv(path):
+    systems = []
+    with open(path, newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            systems.append({
+                "os": row["os"],
+                "version": row["version"]
+            })
+    return systems
 
-if info is None:
-    print(f"Impossible de trouver {os_name} {version} dans l'API.")
-else:
-    print(f"OS : {os_name} {version}")
-    print("Date de fin de support :", info.get("eol"))
+# ------------------ EXPORT JSON ------------------
+def export_json(data, filename="eol_results.json"):
+    output = {
+        "timestamp": datetime.now().isoformat(),
+        "results": data
+    }
 
-    eol_date = info.get("eol") # recuperation de la date selon version
+    # Path to the export file
+    filepath = f"results/{filename}"
 
-    if eol_date is None:
-        print("Statut : encore supporté")
-    else:
-        today = date.today()
-        try:
-            eol = date.fromisoformat(eol_date)
-            if today > eol:
-                print("\033[91mStatut : Obsolete\033[0m") # rouge
-            else:
-                print("\033[92mStatut : encore supporté\033[0m") # vert
-        except:
-            print("\033[34mStatut : inconnu\033[0m") # bleu
+    with open(filepath, "w") as f:
+        json.dump(output, f, indent=4)
+
+    print(f"Résultat exporté dans : {filepath}")
+# ------------------ MAIN ------------------
+if __name__ == "__main__":
+    systems = load_csv("data\systems.csv")
+    results = []
+
+    for item in systems:
+        os_name = item["os"]
+        version = item["version"]
+
+        info = check_eol(os_name, version)
+
+        results.append({
+            "os": os_name,
+            "version": version,
+            "eol_info": info
+        })
+
+    export_json(results)
