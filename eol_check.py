@@ -1,7 +1,7 @@
 import requests
 import json
 import csv
-from datetime import date, datetime
+from datetime import datetime
 
 # ------------------ FONCTION API ------------------
 def check_eol(os_name, version):
