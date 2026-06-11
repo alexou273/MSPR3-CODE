@@ -19,14 +19,25 @@ def _horodatage_fichier():
 
 
 def _get_config():
-    """Recupere la configuration MySQL depuis les variables d'environnement."""
+    """
+    Recupere la configuration depuis les variables d'environnement.
+    Leve une EnvironmentError si une variable obligatoire est absente.
+    """
+    obligatoires = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"]
+    manquantes = [v for v in obligatoires if not os.environ.get(v)]
+    if manquantes:
+        raise EnvironmentError(
+            f"Variables d'environnement manquantes : {', '.join(manquantes)}. "
+            f"Verifiez votre fichier .env (voir .env.example)."
+        )
+
     return {
-        "host":     os.environ.get("MYSQL_HOST", "localhost"),
-        "port":     int(os.environ.get("MYSQL_PORT", 3306)),
-        "user":     os.environ.get("MYSQL_USER", "root"),
-        "password": os.environ.get("MYSQL_PASSWORD", ""),
-        "database": os.environ.get("MYSQL_DATABASE", ""),
-        "dossier":  os.environ.get("DOSSIER_SAUVEGARDES", "sauvegardes"),
+        "host":      os.environ.get("MYSQL_HOST"),
+        "port":      int(os.environ.get("MYSQL_PORT", 3306)),
+        "user":      os.environ.get("MYSQL_USER"),
+        "password":  os.environ.get("MYSQL_PASSWORD", ""),
+        "database":  os.environ.get("MYSQL_DATABASE"),
+        "dossier":   os.environ.get("DOSSIER_SAUVEGARDES", "sauvegardes"),
         "nb_garder": int(os.environ.get("NB_SAUVEGARDES_GARDER", 7)),
     }
 
@@ -71,11 +82,6 @@ def sauvegarde_sql():
         "base": config["database"],
         "hote": config["host"]
     }
-
-    if not config["database"]:
-        resultat["statut"] = "ERREUR"
-        resultat["message"] = "Variable MYSQL_DATABASE non definie dans le .env"
-        return resultat, 1
 
     os.makedirs(config["dossier"], exist_ok=True)
     nom_fichier = f"{config['database']}_{_horodatage_fichier()}.sql"
