@@ -23,7 +23,6 @@ def check_eol(os_name, version):
 
     return None
 
-
 # ------------------ READ systems.csv FILE ------------------
 def load_csv(path):
     systems = []
@@ -35,7 +34,6 @@ def load_csv(path):
                 "version": row["version"]
             })
     return systems
-
 
 # ------------------ EXPORT RESULTS TO JSON ------------------
 def export_json(data, filename="eol_results.json"):
@@ -65,10 +63,8 @@ if __name__ == "__main__":
     for item in systems:
         os_name = item["os"]
         version = item["version"]
-
         # Call the API function
         info = check_eol(os_name, version)
-
         # Append result to the final list
         results.append({
             "os": os_name,
