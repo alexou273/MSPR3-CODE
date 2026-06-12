@@ -3,6 +3,11 @@ import platform
 import json
 import datetime
 import os
+import shutil
+from dotenv import load_dotenv
+
+# Charge les variables depuis le fichier .env s'il existe
+load_dotenv()
 
 try:
     import psutil
@@ -15,14 +20,53 @@ def _timestamp():
     return datetime.datetime.now().isoformat()
 
 
-def _sauvegarder_log(data, dossier="logs"):
-    """Sauvegarde le resultat en JSON horodate dans le dossier logs."""
+def _sauvegarder_log(data, dossier=None):
+    dossier = dossier or os.environ.get("DOSSIER_LOGS", "logs")
     os.makedirs(dossier, exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     chemin = os.path.join(dossier, f"diag_{ts}.json")
     with open(chemin, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     return chemin
+
+
+def _get_mysql_config():
+    """
+    Recupere la configuration MySQL depuis les variables d'environnement.
+    Leve une EnvironmentError si une variable obligatoire est absente.
+    """
+    obligatoires = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"]
+    manquantes = [v for v in obligatoires if not os.environ.get(v)]
+    if manquantes:
+        raise EnvironmentError(
+            f"Variables d'environnement manquantes : {', '.join(manquantes)}. "
+            f"Verifiez votre fichier .env (voir .env.example)."
+        )
+    return {
+        "host":     os.environ.get("MYSQL_HOST"),
+        "port":     int(os.environ.get("MYSQL_PORT", 3306)),
+        "user":     os.environ.get("MYSQL_USER"),
+        "password": os.environ.get("MYSQL_PASSWORD", ""),
+        "database": os.environ.get("MYSQL_DATABASE"),
+    }
+
+
+def _get_dc_config():
+    """
+    Recupere les IPs des controleurs de domaine depuis les variables d'environnement.
+    Leve une EnvironmentError si DC1_IP ou DC2_IP est absent.
+    """
+    obligatoires = ["DC1_IP", "DC2_IP"]
+    manquantes = [v for v in obligatoires if not os.environ.get(v)]
+    if manquantes:
+        raise EnvironmentError(
+            f"Variables d'environnement manquantes : {', '.join(manquantes)}. "
+            f"Verifiez votre fichier .env (voir .env.example)."
+        )
+    return {
+        "dc1": os.environ.get("DC1_IP"),
+        "dc2": os.environ.get("DC2_IP"),
+    }
 
 
 def check_ad_dns(dc_ip, timeout=3):
@@ -66,26 +110,29 @@ def check_ad_dns(dc_ip, timeout=3):
     return resultats, 0 if tous_ok else 1
 
 
-def test_mysql(host, port=3306, user="root", password="", database=""):
+def test_mysql():
     """
     Teste la connexion a un serveur MySQL.
-    Retourne version, uptime et un code de retour (0=OK, 1=erreur).
+    Les credentials sont lus depuis les variables d'environnement (fichier .env).
+    Retourne un dict et un code de retour (0=OK, 1=erreur).
     """
+    config = _get_mysql_config()
+
     resultat = {
         "horodatage": _timestamp(),
-        "hote": host,
-        "port": port,
-        "utilisateur": user
+        "hote": config["host"],
+        "port": config["port"],
+        "utilisateur": config["user"]
     }
 
     try:
         import mysql.connector
         conn = mysql.connector.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database if database else None,
+            host=config["host"],
+            port=config["port"],
+            user=config["user"],
+            password=config["password"],
+            database=config["database"],
             connection_timeout=5
         )
         cursor = conn.cursor()
@@ -129,7 +176,6 @@ def diag_systeme():
         info["erreur"] = "psutil non disponible : pip install psutil"
         return info, 1
 
-    # Uptime
     try:
         boot = datetime.datetime.fromtimestamp(psutil.boot_time())
         duree = datetime.datetime.now() - boot
@@ -140,7 +186,6 @@ def diag_systeme():
     except Exception as e:
         info["uptime"] = f"erreur: {e}"
 
-    # CPU
     try:
         info["cpu"] = {
             "coeurs_physiques": psutil.cpu_count(logical=False),
@@ -150,7 +195,6 @@ def diag_systeme():
     except Exception as e:
         info["cpu"] = {"erreur": str(e)}
 
-    # RAM
     try:
         mem = psutil.virtual_memory()
         info["ram"] = {
@@ -161,7 +205,6 @@ def diag_systeme():
     except Exception as e:
         info["ram"] = {"erreur": str(e)}
 
-    # Disques
     try:
         disques = []
         for part in psutil.disk_partitions():
@@ -192,35 +235,30 @@ if __name__ == "__main__":
     import sys
 
     print("=== Module Diagnostic NTL ===")
-    print("1. Verifier AD/DNS sur un controleur de domaine")
-    print("2. Tester la connexion MySQL")
-    print("3. Diagnostic systeme local (OS/CPU/RAM/Disques)")
+    print("1. Verifier AD/DNS sur DC01")
+    print("2. Verifier AD/DNS sur DC02")
+    print("3. Tester la connexion MySQL (WMS-DB)")
+    print("4. Diagnostic systeme local (OS/CPU/RAM/Disques)")
     choix = input("\nChoix : ").strip()
 
-    if choix == "1":
-        dc_ip = input("IP du controleur de domaine : ").strip()
+    if choix in ("1", "2"):
+        dc_config = _get_dc_config()
+        dc_ip = dc_config["dc1"] if choix == "1" else dc_config["dc2"]
         res, code = check_ad_dns(dc_ip)
         print(json.dumps(res, indent=2, ensure_ascii=False))
-        chemin = _sauvegarder_log(res)
-        print(f"Log sauvegarde : {chemin}")
-        sys.exit(code)
-
-    elif choix == "2":
-        host = input("Hote MySQL : ").strip()
-        user = input("Utilisateur : ").strip()
-        password = input("Mot de passe : ").strip()
-        db = input("Base de donnees (optionnel) : ").strip()
-        res, code = test_mysql(host, 3306, user, password, db)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        chemin = _sauvegarder_log(res)
-        print(f"Log sauvegarde : {chemin}")
+        print(f"Log sauvegarde : {_sauvegarder_log(res)}")
         sys.exit(code)
 
     elif choix == "3":
+        res, code = test_mysql()
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        print(f"Log sauvegarde : {_sauvegarder_log(res)}")
+        sys.exit(code)
+
+    elif choix == "4":
         res, code = diag_systeme()
         print(json.dumps(res, indent=2, ensure_ascii=False))
-        chemin = _sauvegarder_log(res)
-        print(f"Log sauvegarde : {chemin}")
+        print(f"Log sauvegarde : {_sauvegarder_log(res)}")
         sys.exit(code)
 
     else:
