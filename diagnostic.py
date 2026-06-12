@@ -3,17 +3,23 @@ import platform
 import json
 import datetime
 import os
-import shutil
+import sys
 from dotenv import load_dotenv
-
-# Charge les variables depuis le fichier .env s'il existe
-load_dotenv()
 
 try:
     import psutil
     PSUTIL_DISPONIBLE = True
 except ImportError:
     PSUTIL_DISPONIBLE = False
+
+try:
+    import mysql.connector
+    MYSQL_DISPONIBLE = True
+except ImportError:
+    MYSQL_DISPONIBLE = False
+
+# Charge les variables depuis le fichier .env s'il existe
+load_dotenv()
 
 
 def _timestamp():
@@ -116,6 +122,13 @@ def test_mysql():
     Les credentials sont lus depuis les variables d'environnement (fichier .env).
     Retourne un dict et un code de retour (0=OK, 1=erreur).
     """
+    if not MYSQL_DISPONIBLE:
+        return {
+            "horodatage": _timestamp(),
+            "statut": "ERREUR",
+            "message": "mysql-connector-python non installe : pip install -r requirements.txt"
+        }, 1
+
     config = _get_mysql_config()
 
     resultat = {
@@ -126,7 +139,6 @@ def test_mysql():
     }
 
     try:
-        import mysql.connector
         conn = mysql.connector.connect(
             host=config["host"],
             port=config["port"],
@@ -148,9 +160,6 @@ def test_mysql():
         resultat["version_mysql"] = version
         resultat["uptime_serveur_sec"] = uptime_sec
 
-    except ImportError:
-        resultat["statut"] = "ERREUR"
-        resultat["message"] = "mysql.connector non installe : pip install mysql-connector-python"
     except Exception as e:
         resultat["statut"] = "ERREUR"
         resultat["message"] = str(e)
@@ -173,7 +182,7 @@ def diag_systeme():
     }
 
     if not PSUTIL_DISPONIBLE:
-        info["erreur"] = "psutil non disponible : pip install psutil"
+        info["erreur"] = "psutil non disponible : pip install -r requirements.txt"
         return info, 1
 
     try:
@@ -232,35 +241,46 @@ def diag_systeme():
 
 
 if __name__ == "__main__":
-    import sys
-
     print("=== Module Diagnostic NTL ===")
-    print("1. Verifier AD/DNS sur DC01")
-    print("2. Verifier AD/DNS sur DC02")
-    print("3. Tester la connexion MySQL (WMS-DB)")
-    print("4. Diagnostic systeme local (OS/CPU/RAM/Disques)")
-    choix = input("\nChoix : ").strip()
 
-    if choix in ("1", "2"):
-        dc_config = _get_dc_config()
-        dc_ip = dc_config["dc1"] if choix == "1" else dc_config["dc2"]
-        res, code = check_ad_dns(dc_ip)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        print(f"Log sauvegarde : {_sauvegarder_log(res)}")
-        sys.exit(code)
+    while True:
+        print("\n1. Verifier AD/DNS sur DC01")
+        print("2. Verifier AD/DNS sur DC02")
+        print("3. Tester la connexion MySQL (WMS-DB)")
+        print("4. Diagnostic systeme local (OS/CPU/RAM/Disques)")
+        print("0. Quitter")
 
-    elif choix == "3":
-        res, code = test_mysql()
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        print(f"Log sauvegarde : {_sauvegarder_log(res)}")
-        sys.exit(code)
+        choix = input("\nChoix : ").strip()
 
-    elif choix == "4":
-        res, code = diag_systeme()
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        print(f"Log sauvegarde : {_sauvegarder_log(res)}")
-        sys.exit(code)
+        if choix in ("1", "2"):
+            try:
+                dc_config = _get_dc_config()
+                dc_ip = dc_config["dc1"] if choix == "1" else dc_config["dc2"]
+                res, code = check_ad_dns(dc_ip)
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                print(f"Log sauvegarde : {_sauvegarder_log(res)}")
+                print(f"Code de retour : {code}")
+            except EnvironmentError as e:
+                print(f"Erreur de configuration : {e}")
 
-    else:
-        print("Choix invalide.")
-        sys.exit(1)
+        elif choix == "3":
+            try:
+                res, code = test_mysql()
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                print(f"Log sauvegarde : {_sauvegarder_log(res)}")
+                print(f"Code de retour : {code}")
+            except EnvironmentError as e:
+                print(f"Erreur de configuration : {e}")
+
+        elif choix == "4":
+            res, code = diag_systeme()
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+            print(f"Log sauvegarde : {_sauvegarder_log(res)}")
+            print(f"Code de retour : {code}")
+
+        elif choix == "0":
+            print("Au revoir.")
+            sys.exit(0)
+
+        else:
+            print("Choix invalide.")
