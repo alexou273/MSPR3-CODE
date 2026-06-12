@@ -1,0 +1,4 @@
+requests>=2.28.0
+# nmap doit etre installe sur le systeme (non disponible via pip)
+# Windows : https://nmap.org/download.html
+# Linux   : sudo apt install nmap
