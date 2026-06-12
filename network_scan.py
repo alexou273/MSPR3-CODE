@@ -1,58 +1,56 @@
-import subprocess # Use for applying nmap ommand line
+import subprocess
 import json
 import os
 from datetime import datetime
 
-# ------------------ NETWORK SCAN FUNCTION ------------------
+# ------------------ FONCTION DE SCAN RÉSEAU ------------------
 def scan_network(network):
     """
-    This scan using nmap and returns a list of detected hosts.
-    The scan tries to identify active machines and guess their OS.
+    Scanne un réseau en utilisant nmap et retourne une liste des hôtes détectés.
+    Le scan tente d’identifier les machines actives et d’estimer leur système d’exploitation.
     """
     
-    print(f"Starting network scan on: {network}")
+    print(f"Début du scan réseau sur : {network}")
 
-    # -sn : ping scan (find active hosts)
-    # -O  : try to detect the operating system
+    # -sn : scan ping (détecte uniquement les hôtes actifs)
+    # -O  : tentative de détection du système d’exploitation
     command = ["nmap", "-sn", "-O", network]
 
     try:
-        # Run the nmap command and capture the output
+        # Exécute la commande nmap et capture la sortie
         result = subprocess.check_output(command, stderr=subprocess.STDOUT, text=True)
     except Exception as e:
-        print('Do you have nmap on your host ?')
-        print("Error running nmap:", e)
+        print("Avez-vous installé nmap sur votre machine ?")
+        print("Erreur lors de l'exécution de nmap :", e)
         return []
 
     hosts = []
     current_ip = None
-    current_os = "Unknown"
+    current_os = "Inconnu"
 
-    # Parse nmap output line by line
+    # Analyse ligne par ligne de la sortie nmap
     for line in result.splitlines():
         line = line.strip()
 
-        # Detect IP address
+        # Détection de l'adresse IP
         if line.startswith("Nmap scan report for"):
             current_ip = line.split()[-1]
-            current_os = "Unknown"
+            current_os = "Inconnu"
 
-        # Detect OS
+        # Détection du système d'exploitation
         if "OS details:" in line:
             current_os = line.replace("OS details:", "").strip()
 
-        # When we reach an empty line, save the host
+        # Une ligne vide indique la fin d’un bloc d’informations sur un hôte
         if line == "" and current_ip:
             hosts.append({"ip": current_ip, "os": current_os})
             current_ip = None
 
     return hosts
-
-
-# ------------------ EXPORT RESULTS TO JSON ------------------
+# ------------------ EXPORT DES RÉSULTATS EN JSON ------------------
 def export_json(data, filename="network_scan.json"):
     """
-    Saves scan rin json file inside the 'results' folder.
+    Sauvegarde les résultats du scan dans un fichier JSON dans le dossier 'results'.
     """
     
     os.makedirs("results", exist_ok=True)
@@ -67,21 +65,16 @@ def export_json(data, filename="network_scan.json"):
     with open(filepath, "w") as f:
         json.dump(output, f, indent=4)
 
-    print(f"Scan results exported to: {filepath}")
-
-
-# ------------------ MAIN PROGRAM ------------------
+    print(f"Résultats du scan exportés dans : {filepath}")
+# ------------------ PROGRAMME PRINCIPAL ------------------
 if __name__ == "__main__":
-    # Ask the user for the network to scan
-    network = input("Enter your network to scan (example: 192.168.10.0/24): ")
-
-    # Run the scan
+    # Demande à l'utilisateur la plage réseau à scanner
+    network = input("Entrez le réseau à scanner (exemple : 192.168.10.0/24) : ")
+    # Exécution du scan
     hosts = scan_network(network)
-
-    # Display results
-    print("\nDetected hosts:")
+    # Affichage des résultats
+    print("\nHôtes détectés :")
     for h in hosts:
-        print(f"- {h['ip']} | OS guess: {h['os']}")
-
-    # Export results
+        print(f"- {h['ip']} | OS détecté : {h['os']}")
+    # Export des résultats
     export_json(hosts)
