@@ -1,3 +1,10 @@
+# Module Diagnostic de NTL-SysToolbox.
+# Verifie la disponibilite des services critiques du siege NTL :
+#   - Controleurs de domaine AD/DNS (DC01 et DC02)
+#   - Base de donnees MySQL du WMS
+#   - Etat systeme local (OS, uptime, CPU, RAM, disques)
+# Toutes les connexions sont configurees via le fichier .env (pas de credentials en dur).
+
 import socket
 import platform
 import json
@@ -6,27 +13,40 @@ import os
 import sys
 from dotenv import load_dotenv
 
+# On tente d'importer psutil (mesures CPU/RAM/disques).
+# Si la librairie n'est pas installee, on desactive la fonctionnalite
+# sans faire planter le script au demarrage.
 try:
     import psutil
     PSUTIL_DISPONIBLE = True
 except ImportError:
     PSUTIL_DISPONIBLE = False
 
+# Meme principe pour mysql.connector : optionnel au chargement,
+# le script signale l'absence de la dependance uniquement quand
+# l'utilisateur tente de tester la connexion MySQL.
 try:
     import mysql.connector
     MYSQL_DISPONIBLE = True
 except ImportError:
     MYSQL_DISPONIBLE = False
 
-# utf-8-sig gere le BOM ajoute par Notepad / PowerShell sur Windows
+# Charge les variables depuis le fichier .env.
+# encoding="utf-8-sig" gere le BOM (marqueur invisible) que Windows ajoute
+# quand on cree un fichier texte avec Notepad ou PowerShell Set-Content.
 load_dotenv(encoding="utf-8-sig")
 
 
 def _timestamp():
+    """Retourne la date et l'heure actuelles au format ISO 8601 (ex: 2026-06-12T14:30:00)."""
     return datetime.datetime.now().isoformat()
 
 
 def _sauvegarder_log(data, dossier=None):
+    """
+    Ecrit le resultat d'un diagnostic dans un fichier JSON horodate.
+    Le dossier de destination est lu depuis DOSSIER_LOGS dans le .env (defaut : 'logs').
+    """
     dossier = dossier or os.environ.get("DOSSIER_LOGS", "logs")
     os.makedirs(dossier, exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -38,10 +58,12 @@ def _sauvegarder_log(data, dossier=None):
 
 def _get_mysql_config():
     """
-    Recupere la configuration MySQL depuis les variables d'environnement.
-    Leve une EnvironmentError si une variable obligatoire est absente.
+    Lit la configuration MySQL depuis les variables d'environnement du .env.
+    Leve une EnvironmentError explicite si MYSQL_HOST, MYSQL_USER ou MYSQL_DATABASE
+    sont absents, pour eviter un message d'erreur cryptique de mysql.connector.
     """
     obligatoires = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"]
+    # Identifie toutes les variables manquantes en une seule passe
     manquantes = [v for v in obligatoires if not os.environ.get(v)]
     if manquantes:
         raise EnvironmentError(
@@ -50,17 +72,18 @@ def _get_mysql_config():
         )
     return {
         "host":     os.environ.get("MYSQL_HOST"),
-        "port":     int(os.environ.get("MYSQL_PORT", 3306)),
+        "port":     int(os.environ.get("MYSQL_PORT", 3306)),  # 3306 est le port MySQL par defaut
         "user":     os.environ.get("MYSQL_USER"),
-        "password": os.environ.get("MYSQL_PASSWORD", ""),
+        "password": os.environ.get("MYSQL_PASSWORD", ""),     # Mot de passe vide autorise
         "database": os.environ.get("MYSQL_DATABASE"),
     }
 
 
 def _get_dc_config():
     """
-    Recupere les IPs des controleurs de domaine depuis les variables d'environnement.
-    Leve une EnvironmentError si DC1_IP ou DC2_IP est absent.
+    Lit les adresses IP des deux controleurs de domaine depuis le .env.
+    DC1_IP = controleur principal (DC01), DC2_IP = controleur secondaire (DC02).
+    Leve une EnvironmentError si l'une des deux variables est absente.
     """
     obligatoires = ["DC1_IP", "DC2_IP"]
     manquantes = [v for v in obligatoires if not os.environ.get(v)]
@@ -77,9 +100,12 @@ def _get_dc_config():
 
 def check_ad_dns(dc_ip, timeout=3):
     """
-    Verifie la disponibilite des services AD/DNS sur un controleur de domaine.
-    Teste les ports 53 (DNS), 389 (LDAP) et 445 (SMB).
-    Retourne un dict de resultats et un code de retour (0=OK, 1=probleme).
+    Verifie la disponibilite des services Active Directory et DNS sur un controleur de domaine.
+    Teste trois ports caracteristiques d'un DC Windows :
+      - Port 53  : DNS (resolution de noms)
+      - Port 389 : LDAP (annuaire Active Directory)
+      - Port 445 : SMB (partages de fichiers et GPO)
+    Retourne un dictionnaire de resultats et un code : 0 = tous les services OK, 1 = au moins un probleme.
     """
     resultats = {
         "horodatage": _timestamp(),
@@ -87,14 +113,17 @@ def check_ad_dns(dc_ip, timeout=3):
         "services": {}
     }
 
+    # Dictionnaire port_name -> numero_de_port pour faciliter l'iteration
     ports = {
-        "DNS (53)": 53,
+        "DNS (53)":  53,
         "LDAP (389)": 389,
-        "SMB (445)": 445,
+        "SMB (445)":  445,
     }
 
     for nom, port in ports.items():
         try:
+            # On ouvre une connexion TCP et on mesure si elle aboutit
+            # connect_ex renvoie 0 si la connexion reussit, un code d'erreur sinon
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(timeout)
             code = sock.connect_ex((dc_ip, port))
@@ -103,6 +132,8 @@ def check_ad_dns(dc_ip, timeout=3):
         except Exception as e:
             resultats["services"][nom] = f"ERREUR: {e}"
 
+    # Resolution DNS inverse : on tente de retrouver le nom d'hote a partir de l'IP
+    # Utile pour verifier que le DNS local repond correctement
     try:
         socket.setdefaulttimeout(timeout)
         nom_hote = socket.gethostbyaddr(dc_ip)[0]
@@ -110,6 +141,7 @@ def check_ad_dns(dc_ip, timeout=3):
     except Exception:
         resultats["nom_hote_resolu"] = "echec"
 
+    # Le statut global est OK uniquement si les trois ports repondent
     tous_ok = all(v == "OK" for v in resultats["services"].values())
     resultats["statut_global"] = "OK" if tous_ok else "DEGRADE"
 
@@ -118,10 +150,12 @@ def check_ad_dns(dc_ip, timeout=3):
 
 def test_mysql():
     """
-    Teste la connexion a un serveur MySQL.
-    Les credentials sont lus depuis les variables d'environnement (fichier .env).
-    Retourne un dict et un code de retour (0=OK, 1=erreur).
+    Teste la connexion a la base de donnees MySQL du WMS.
+    Les credentials (host, user, password, database) sont lus depuis le .env.
+    En cas de succes, remonte la version MySQL et l'uptime du serveur.
+    Retourne un dictionnaire et un code : 0 = connexion OK, 1 = echec.
     """
+    # Verifie que la dependance est disponible avant de tenter quoi que ce soit
     if not MYSQL_DISPONIBLE:
         return {
             "horodatage": _timestamp(),
@@ -131,6 +165,7 @@ def test_mysql():
 
     config = _get_mysql_config()
 
+    # Initialise le resultat avec les informations de connexion (sans le mot de passe)
     resultat = {
         "horodatage": _timestamp(),
         "hote": config["host"],
@@ -139,6 +174,7 @@ def test_mysql():
     }
 
     try:
+        # Connexion avec un timeout de 5 secondes pour ne pas bloquer longtemps
         conn = mysql.connector.connect(
             host=config["host"],
             port=config["port"],
@@ -148,11 +184,16 @@ def test_mysql():
             connection_timeout=5
         )
         cursor = conn.cursor()
+
+        # Recupere la version du serveur MySQL
         cursor.execute("SELECT VERSION()")
         version = cursor.fetchone()[0]
+
+        # Recupere l'uptime du serveur en secondes depuis son dernier demarrage
         cursor.execute("SHOW STATUS LIKE 'Uptime'")
         uptime_row = cursor.fetchone()
         uptime_sec = int(uptime_row[1]) if uptime_row else 0
+
         cursor.close()
         conn.close()
 
@@ -169,10 +210,12 @@ def test_mysql():
 
 def diag_systeme():
     """
-    Collecte les informations systeme locales : OS, uptime, CPU, RAM, Disques.
-    Fonctionne sous Windows Server et Ubuntu.
-    Retourne un dict et un code (0=OK, 1=erreur, 2=avertissement ressources).
+    Collecte un etat complet de la machine locale : OS, uptime, CPU, RAM, disques.
+    Fonctionne sous Windows Server et Ubuntu grace a la librairie psutil (cross-platform).
+    Retourne un dictionnaire et un code : 0 = OK, 1 = psutil absent, 2 = ressources sous pression.
+    Le seuil d'avertissement est fixe a 90% d'utilisation CPU ou RAM.
     """
+    # Informations de base disponibles sans psutil, via le module standard 'platform'
     info = {
         "horodatage": _timestamp(),
         "os": platform.platform(),
@@ -181,10 +224,12 @@ def diag_systeme():
         "hostname": platform.node(),
     }
 
+    # Sans psutil, on ne peut pas mesurer CPU/RAM/disques : on signale l'absence et on s'arrete
     if not PSUTIL_DISPONIBLE:
         info["erreur"] = "psutil non disponible : pip install -r requirements.txt"
         return info, 1
 
+    # Calcul de l'uptime : difference entre maintenant et le dernier demarrage systeme
     try:
         boot = datetime.datetime.fromtimestamp(psutil.boot_time())
         duree = datetime.datetime.now() - boot
@@ -195,6 +240,7 @@ def diag_systeme():
     except Exception as e:
         info["uptime"] = f"erreur: {e}"
 
+    # Informations CPU : nombre de coeurs et utilisation instantanee (mesure sur 1 seconde)
     try:
         info["cpu"] = {
             "coeurs_physiques": psutil.cpu_count(logical=False),
@@ -204,6 +250,7 @@ def diag_systeme():
     except Exception as e:
         info["cpu"] = {"erreur": str(e)}
 
+    # Informations RAM : total, disponible et pourcentage d'utilisation
     try:
         mem = psutil.virtual_memory()
         info["ram"] = {
@@ -214,6 +261,7 @@ def diag_systeme():
     except Exception as e:
         info["ram"] = {"erreur": str(e)}
 
+    # Informations disques : on parcourt toutes les partitions montees
     try:
         disques = []
         for part in psutil.disk_partitions():
@@ -228,18 +276,23 @@ def diag_systeme():
                     "utilisation_pct": usage.percent
                 })
             except PermissionError:
+                # Certaines partitions systeme (ex: lecteur CD vide) refusent l'acces, on les ignore
                 continue
         info["disques"] = disques
     except Exception as e:
         info["disques"] = {"erreur": str(e)}
 
+    # Statut global : AVERTISSEMENT si CPU ou RAM depasse 90%
     cpu_pct = info.get("cpu", {}).get("utilisation_pct", 0)
     ram_pct = info.get("ram", {}).get("utilisation_pct", 0)
     info["statut_global"] = "OK" if (cpu_pct < 90 and ram_pct < 90) else "AVERTISSEMENT"
 
+    # Code 0 = tout va bien, code 2 = avertissement ressources (pas une erreur bloquante)
     return info, 0 if info["statut_global"] == "OK" else 2
 
 
+# Ce bloc s'execute uniquement quand le script est lance directement (python diagnostic.py),
+# pas quand il est importe par main.py. Utile pour tester le module de facon isolee.
 if __name__ == "__main__":
     print("=== Module Diagnostic NTL ===")
 
