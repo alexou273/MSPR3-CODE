@@ -4,7 +4,14 @@ import csv
 import json
 import datetime
 import shutil
+import sys
 from dotenv import load_dotenv
+
+try:
+    import mysql.connector
+    MYSQL_DISPONIBLE = True
+except ImportError:
+    MYSQL_DISPONIBLE = False
 
 # Charge les variables depuis le fichier .env s'il existe
 load_dotenv()
@@ -149,8 +156,12 @@ def export_csv(table):
     nom_fichier = f"{config['database']}_{table}_{_horodatage_fichier()}.csv"
     chemin_sortie = os.path.join(config["dossier"], nom_fichier)
 
+    if not MYSQL_DISPONIBLE:
+        resultat["statut"] = "ERREUR"
+        resultat["message"] = "mysql-connector-python non installe : pip install -r requirements.txt"
+        return resultat, 1
+
     try:
-        import mysql.connector
         conn = mysql.connector.connect(
             host=config["host"],
             port=config["port"],
@@ -176,9 +187,6 @@ def export_csv(table):
         resultat["nb_lignes"] = len(lignes)
         resultat["colonnes"] = colonnes
 
-    except ImportError:
-        resultat["statut"] = "ERREUR"
-        resultat["message"] = "mysql.connector non installe : pip install mysql-connector-python"
     except Exception as e:
         resultat["statut"] = "ERREUR"
         resultat["message"] = str(e)
@@ -221,35 +229,46 @@ def rotation_sauvegardes():
 
 
 if __name__ == "__main__":
-    import sys
-
     print("=== Module Sauvegarde WMS ===")
-    print("1. Sauvegarde SQL complete")
-    print("2. Export CSV d'une table")
-    print("3. Rotation des sauvegardes (nettoyage)")
 
-    choix = input("\nChoix : ").strip()
+    while True:
+        print("\n1. Sauvegarde SQL complete")
+        print("2. Export CSV d'une table")
+        print("3. Rotation des sauvegardes (nettoyage)")
+        print("0. Quitter")
 
-    if choix == "1":
-        res, code = sauvegarde_sql()
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        chemin = _sauvegarder_log(res)
-        print(f"Log sauvegarde : {chemin}")
-        sys.exit(code)
+        choix = input("\nChoix : ").strip()
 
-    elif choix == "2":
-        table = input("Nom de la table : ").strip()
-        res, code = export_csv(table)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        chemin = _sauvegarder_log(res)
-        print(f"Log sauvegarde : {chemin}")
-        sys.exit(code)
+        if choix == "1":
+            try:
+                res, code = sauvegarde_sql()
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                print(f"Log sauvegarde : {_sauvegarder_log(res)}")
+                print(f"Code de retour : {code}")
+            except EnvironmentError as e:
+                print(f"Erreur de configuration : {e}")
 
-    elif choix == "3":
-        res, code = rotation_sauvegardes()
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        sys.exit(code)
+        elif choix == "2":
+            table = input("Nom de la table : ").strip()
+            try:
+                res, code = export_csv(table)
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                print(f"Log sauvegarde : {_sauvegarder_log(res)}")
+                print(f"Code de retour : {code}")
+            except EnvironmentError as e:
+                print(f"Erreur de configuration : {e}")
 
-    else:
-        print("Choix invalide.")
-        sys.exit(1)
+        elif choix == "3":
+            try:
+                res, code = rotation_sauvegardes()
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                print(f"Code de retour : {code}")
+            except EnvironmentError as e:
+                print(f"Erreur de configuration : {e}")
+
+        elif choix == "0":
+            print("Au revoir.")
+            sys.exit(0)
+
+        else:
+            print("Choix invalide.")
