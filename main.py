@@ -4,8 +4,14 @@ import os
 import datetime
 from dotenv import load_dotenv
 
+# Force UTF-8 sur la console Windows (evite les caracteres garbles)
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 sys.path.insert(0, os.path.dirname(__file__))
-load_dotenv()
+# utf-8-sig gere le BOM ajoute par Notepad / PowerShell sur Windows
+load_dotenv(encoding="utf-8-sig")
 
 
 def _sauvegarder_log(data, dossier=None):

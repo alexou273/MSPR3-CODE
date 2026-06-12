@@ -13,8 +13,8 @@ try:
 except ImportError:
     MYSQL_DISPONIBLE = False
 
-# Charge les variables depuis le fichier .env s'il existe
-load_dotenv()
+# utf-8-sig gere le BOM ajoute par Notepad / PowerShell sur Windows
+load_dotenv(encoding="utf-8-sig")
 
 
 def _timestamp():
