@@ -4,30 +4,30 @@ import csv
 import os
 from datetime import datetime, timedelta
 
-# ------------------ API FUNCTION ------------------
+# ------------------ FONCTION API ------------------
 def check_eol(os_name, version):
     """
-    Checks if an OS version is still supported using the endoflife.date API.
-    Returns the full entry if found, otherwise None.
+    Vérifie si une version d'un OS est encore supportée en utilisant l'API endoflife.date.
+    Retourne l'entrée complète si trouvée, sinon None.
     """
     try:
         url = f"https://endoflife.date/api/{os_name}.json"
         response = requests.get(url)
         data = response.json()
     except Exception as e:
-        print("API error:", e)
+        print("Erreur API :", e)
         return None
-    
-    # Search for the version in the API response
+
+    # Recherche de la version dans la réponse de l'API
     for entry in data:
         if entry.get("cycle") == version:
             return entry
 
     return None
-# ------------------ READ systems.csv FILE ------------------
+# ------------------ LECTURE DU FICHIER systems.csv ------------------
 def load_csv(path):
     """
-    Loads the systems.csv file and returns a list of OS/version pairs.
+    Charge le fichier systems.csv et retourne une liste de couples OS / version.
     """
     systems = []
     with open(path, newline='') as f:
@@ -38,29 +38,32 @@ def load_csv(path):
                 "version": row["version"]
             })
     return systems
-# ------------------ EXPORT RESULTS TO JSON ------------------
+# ------------------ EXPORT DES RÉSULTATS EN JSON ------------------
 def export_json(data, filename="eol_results.json"):
     """
-    Exports the audit results to a JSON file inside /results.
+    Exporte les résultats de l'audit dans un fichier JSON dans le dossier /results.
     """
     output = {
         "timestamp": datetime.now().isoformat(),
         "results": data
     }
+
+    # Création du dossier results si nécessaire
     if not os.path.exists("results"):
         os.makedirs("results")
 
     filepath = f"results/{filename}"
     with open(filepath, "w") as f:
         json.dump(output, f, indent=4)
+
     print(f"Résultat exporté dans : {filepath}")
 
-# ------------------ EXPORT RESULTS TO HTML ------------------
+
+# ------------------ EXPORT DES RÉSULTATS EN HTML ------------------
 def export_html(data, filename="eol_report.html"):
     """
-    Generates an HTML report with color-coded statuses.
-    This makes the audit results human-readable and 'exploitable',
-    as required by the cahier des charges.
+    Génère un rapport HTML avec un code couleur selon le statut.
+    Ce rapport est lisible par un humain et répond aux exigences du cahier des charges.
     """
 
     if not os.path.exists("results"):
@@ -305,12 +308,14 @@ def export_html(data, filename="eol_report.html"):
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"HTML report generated: {filepath}")
-# ------------------ MAIN PROGRAM ------------------
+    print(f"Rapport HTML généré : {filepath}")
+# ------------------ MAIN ------------------
 if __name__ == "__main__":
+    # Chargement du fichier CSV
     systems = load_csv("data/systems.csv")
     results = []
 
+    # Vérification EOL pour chaque OS/version
     for item in systems:
         os_name = item["os"]
         version = item["version"]
@@ -322,6 +327,6 @@ if __name__ == "__main__":
             "version": version,
             "eol_info": info
         })
-
+    # Export JSON + HTML
     export_json(results)
     export_html(results)
