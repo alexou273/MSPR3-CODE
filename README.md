@@ -93,12 +93,6 @@ Le menu principal s'affiche :
 0. Quitter
 ```
 
-Chaque module peut également être lancé de façon autonome :
-```bash
-python modules/diagnostic.py
-python modules/sauvegarde.py
-```
-
 ---
 
 ## Modules
