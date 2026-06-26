@@ -5,6 +5,7 @@ import json
 import datetime
 import shutil
 import sys
+import re
 from dotenv import load_dotenv
 
 try:
@@ -100,21 +101,25 @@ def sauvegarde_sql():
         resultat["message"] = "mysqldump introuvable - verifier l'installation MySQL"
         return resultat, 1
 
+    # On ne met PAS --password ici : il serait visible dans la liste des processus.
+    # On passe le mot de passe via la variable d'environnement MYSQL_PWD (lue par mysqldump).
     cmd = [
         mysqldump,
         f"--host={config['host']}",
         f"--port={config['port']}",
         f"--user={config['user']}",
-        f"--password={config['password']}",
         "--single-transaction",
         "--routines",
         "--triggers",
         config["database"]
     ]
 
+    env = os.environ.copy()
+    env["MYSQL_PWD"] = config["password"]
+
     try:
         with open(chemin_sortie, "w", encoding="utf-8") as f:
-            proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, timeout=300)
+            proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, timeout=300, env=env)
 
         if proc.returncode == 0:
             resultat["statut"] = "OK"
@@ -151,6 +156,13 @@ def export_csv(table):
         "table": table,
         "hote": config["host"]
     }
+
+    # Le nom de table vient de l'utilisateur : on n'autorise que lettres, chiffres et _
+    # pour eviter une injection SQL dans la requete SELECT.
+    if not re.match(r"^[A-Za-z0-9_]+$", table):
+        resultat["statut"] = "ERREUR"
+        resultat["message"] = "Nom de table invalide (lettres, chiffres et _ uniquement)"
+        return resultat, 1
 
     os.makedirs(config["dossier"], exist_ok=True)
     nom_fichier = f"{config['database']}_{table}_{_horodatage_fichier()}.csv"
