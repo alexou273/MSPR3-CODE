@@ -71,238 +71,104 @@ def export_html(data, filename="eol_report.html"):
 
     filepath = f"results/{filename}"
 
-    # --- Premiere passe : calcul des statuts et compteurs ---
-    rows_data = []
-    counts = {"supported": 0, "soon": 0, "obsolete": 0, "unknown": 0}
+    # Compteurs pour le petit résumé en haut du rapport
+    nb_supporte = 0
+    nb_bientot = 0
+    nb_obsolete = 0
+    nb_inconnu = 0
 
+    # On construit les lignes du tableau au fur et à mesure
+    lignes = ""
     for item in data:
         os_name = item["os"]
-        version  = item["version"]
-        info     = item["eol_info"]
+        version = item["version"]
+        info = item["eol_info"]
 
-        status   = "Inconnu"
-        css      = "unknown"
-        eol_date = "-"
+        statut = "Inconnu"
+        couleur = "inconnu"
+        date_eol = "-"
 
         if info is not None:
-            eol_date = info.get("eol", None)
+            date_eol = info.get("eol")
 
-            if eol_date:
-                eol_dt         = datetime.strptime(eol_date, "%Y-%m-%d")
-                now            = datetime.now()
-                soon_threshold = now + timedelta(days=180)  # 6 mois
+            if date_eol:
+                eol = datetime.strptime(date_eol, "%Y-%m-%d")
+                maintenant = datetime.now()
+                bientot = maintenant + timedelta(days=180)  # 6 mois
 
-                if eol_dt < now:
-                    status = "Obsolète"
-                    css    = "obsolete"
-                elif now <= eol_dt <= soon_threshold:
-                    status = "Bientôt EOL"
-                    css    = "soon"
+                if eol < maintenant:
+                    statut = "Obsolète"
+                    couleur = "obsolete"
+                elif eol <= bientot:
+                    statut = "Bientôt EOL"
+                    couleur = "bientot"
                 else:
-                    status = "Supporté"
-                    css    = "supported"
+                    statut = "Supporté"
+                    couleur = "supporte"
+            else:
+                date_eol = "-"
 
-        counts[css] += 1
-        rows_data.append((css, os_name, version, status, eol_date or "-"))
+        # On met à jour le bon compteur
+        if couleur == "supporte":
+            nb_supporte += 1
+        elif couleur == "bientot":
+            nb_bientot += 1
+        elif couleur == "obsolete":
+            nb_obsolete += 1
+        else:
+            nb_inconnu += 1
 
-    # --- Construction des lignes du tableau ---
-    badge_class = {
-        "supported": "badge-supported",
-        "soon":      "badge-soon",
-        "obsolete":  "badge-obsolete",
-        "unknown":   "badge-unknown",
-    }
+        lignes += f"""
+            <tr class="{couleur}">
+                <td>{os_name}</td>
+                <td>{version}</td>
+                <td>{statut}</td>
+                <td>{date_eol}</td>
+            </tr>"""
 
-    rows_html = ""
-    for css, os_name, version, status, eol_date in rows_data:
-        rows_html += f"""
-                <tr class="{css}">
-                    <td><span class="os-name">{os_name}</span></td>
-                    <td><span class="version">{version}</span></td>
-                    <td><span class="badge {badge_class[css]}">{status}</span></td>
-                    <td class="eol-date">{eol_date}</td>
-                </tr>"""
+    date_jour = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
 
-    # --- Generation du HTML complet ---
     html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rapport d'obsolescence — NTL-SysToolbox</title>
+    <title>Rapport d'obsolescence</title>
     <style>
-        *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f0f2f5;
-            color: #2c3e50;
-            min-height: 100vh;
-        }}
-
-        /* ---- En-tete ---- */
-        .header {{
-            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
-            color: white;
-            padding: 32px 40px;
-        }}
-        .header h1   {{ font-size: 1.8rem; font-weight: 700; margin-bottom: 4px; }}
-        .header .sub {{ font-size: 0.95rem; opacity: 0.75; }}
-        .header .meta {{ font-size: 0.82rem; opacity: 0.55; margin-top: 10px; }}
-
-        /* ---- Contenu central ---- */
-        .content {{
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 32px 24px;
-        }}
-
-        /* ---- Cartes de resume ---- */
-        .cards {{
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 32px;
-        }}
-        .card {{
-            background: white;
-            border-radius: 10px;
-            padding: 20px 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,.08);
-            text-align: center;
-        }}
-        .card .count  {{ font-size: 2.4rem; font-weight: 800; line-height: 1; }}
-        .card .label  {{
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            color: #7f8c8d;
-            margin-top: 6px;
-        }}
-        .card.supported .count {{ color: #27ae60; }}
-        .card.soon      .count {{ color: #e67e22; }}
-        .card.obsolete  .count {{ color: #e74c3c; }}
-        .card.unknown   .count {{ color: #95a5a6; }}
-
-        /* ---- Tableau ---- */
-        .table-wrapper {{
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 1px 4px rgba(0,0,0,.08);
-            overflow: hidden;
-        }}
-        table {{ width: 100%; border-collapse: collapse; }}
-        thead th {{
-            background: #f8f9fa;
-            color: #5f6368;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            padding: 14px 20px;
-            text-align: left;
-            border-bottom: 2px solid #e9ecef;
-        }}
-        tbody tr {{
-            border-bottom: 1px solid #f1f3f4;
-            transition: background .12s;
-        }}
-        tbody tr:last-child {{ border-bottom: none; }}
-        tbody tr:hover {{ background: #fafbfc; }}
-        tbody td {{ padding: 14px 20px; font-size: 0.92rem; }}
-
-        /* Barre coloree a gauche de chaque ligne selon le statut */
-        tr.supported td:first-child {{ border-left: 4px solid #27ae60; }}
-        tr.soon      td:first-child {{ border-left: 4px solid #e67e22; }}
-        tr.obsolete  td:first-child {{ border-left: 4px solid #e74c3c; }}
-        tr.unknown   td:first-child {{ border-left: 4px solid #bdc3c7; }}
-
-        /* ---- Badges de statut ---- */
-        .badge {{
-            display: inline-block;
-            padding: 3px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: .03em;
-        }}
-        .badge-supported {{ background: #d5f5e3; color: #1e8449; }}
-        .badge-soon      {{ background: #fdebd0; color: #a04000; }}
-        .badge-obsolete  {{ background: #fadbd8; color: #922b21; }}
-        .badge-unknown   {{ background: #eaecee; color: #626567; }}
-
-        /* ---- Cellules specifiques ---- */
-        .os-name {{ font-weight: 600; }}
-        .version {{
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            background: #f1f3f4;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }}
-        .eol-date {{ font-size: 0.88rem; color: #5f6368; }}
-
-        /* ---- Pied de page ---- */
-        .footer {{
-            text-align: center;
-            color: #95a5a6;
-            font-size: 0.8rem;
-            padding: 24px 0 16px;
-        }}
-
-        @media (max-width: 640px) {{
-            .cards   {{ grid-template-columns: repeat(2, 1fr); }}
-            .header  {{ padding: 24px 20px; }}
-            .content {{ padding: 20px 16px; }}
-        }}
+        body {{ font-family: Arial, sans-serif; margin: 30px; color: #333; }}
+        h1 {{ color: #1a237e; }}
+        .resume {{ margin: 15px 0 25px 0; }}
+        .resume span {{ margin-right: 20px; font-weight: bold; }}
+        table {{ border-collapse: collapse; width: 100%; }}
+        th, td {{ border: 1px solid #ccc; padding: 8px 12px; text-align: left; }}
+        th {{ background-color: #1a237e; color: white; }}
+        .supporte {{ background-color: #c8f7c5; }}   /* Vert */
+        .bientot  {{ background-color: #ffe5b4; }}   /* Orange */
+        .obsolete {{ background-color: #f7c5c5; }}   /* Rouge */
+        .inconnu  {{ background-color: #e0e0e0; }}   /* Gris */
+        .pied {{ margin-top: 25px; color: #888; font-size: 13px; }}
     </style>
 </head>
 <body>
+    <h1>Rapport d'obsolescence - NTL-SysToolbox</h1>
+    <p>Généré le {date_jour} (source : endoflife.date)</p>
 
-    <div class="header">
-        <h1>Rapport d'obsolescence</h1>
-        <div class="sub">NTL-SysToolbox — Audit des systèmes d'exploitation</div>
-        <div class="meta">Généré le {datetime.now().strftime("%d/%m/%Y à %H:%M:%S")} — Source : endoflife.date</div>
+    <div class="resume">
+        <span style="color:#27ae60;">Supportés : {nb_supporte}</span>
+        <span style="color:#e67e22;">Bientôt EOL : {nb_bientot}</span>
+        <span style="color:#c0392b;">Obsolètes : {nb_obsolete}</span>
+        <span style="color:#777;">Inconnus : {nb_inconnu}</span>
     </div>
 
-    <div class="content">
+    <table>
+        <tr>
+            <th>Système</th>
+            <th>Version</th>
+            <th>Statut</th>
+            <th>Date EOL</th>
+        </tr>{lignes}
+    </table>
 
-        <div class="cards">
-            <div class="card supported">
-                <div class="count">{counts["supported"]}</div>
-                <div class="label">Supportés</div>
-            </div>
-            <div class="card soon">
-                <div class="count">{counts["soon"]}</div>
-                <div class="label">Bientôt EOL</div>
-            </div>
-            <div class="card obsolete">
-                <div class="count">{counts["obsolete"]}</div>
-                <div class="label">Obsolètes</div>
-            </div>
-            <div class="card unknown">
-                <div class="count">{counts["unknown"]}</div>
-                <div class="label">Inconnus</div>
-            </div>
-        </div>
-
-        <div class="table-wrapper">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Système</th>
-                        <th>Version</th>
-                        <th>Statut</th>
-                        <th>Date EOL</th>
-                    </tr>
-                </thead>
-                <tbody>{rows_html}
-                </tbody>
-            </table>
-        </div>
-
-    </div>
-
-    <div class="footer">NTL-SysToolbox v1.0</div>
-
+    <p class="pied">NTL-SysToolbox v1.0</p>
 </body>
 </html>"""
 
