@@ -12,9 +12,9 @@ def scan_network(network):
     
     print(f"Début du scan réseau sur : {network}")
 
-    # -sn : scan ping (détecte uniquement les hôtes actifs)
-    # -O  : tentative de détection du système d’exploitation
-    command = ["nmap", "-sn", "-O", network]
+    # -O : détection du système d'exploitation (fait aussi un scan de ports,
+    # nécessaire pour que nmap puisse deviner l'OS)
+    command = ["nmap", "-O", network]
 
     try:
         # Exécute la commande nmap et capture la sortie
@@ -34,12 +34,18 @@ def scan_network(network):
 
         # Détection de l'adresse IP
         if line.startswith("Nmap scan report for"):
-            current_ip = line.split()[-1]
+            # nmap affiche soit "...for 192.168.1.5", soit "...for nom (192.168.1.5)"
+            # on enlève les parenthèses pour ne garder que l'IP
+            current_ip = line.split()[-1].strip("()")
             current_os = "Inconnu"
 
         # Détection du système d'exploitation
         if "OS details:" in line:
             current_os = line.replace("OS details:", "").strip()
+        # Si nmap n'est pas sûr, il donne plusieurs propositions : on garde la première
+        elif "Aggressive OS guesses:" in line:
+            propositions = line.replace("Aggressive OS guesses:", "").strip()
+            current_os = propositions.split(",")[0].strip()
 
         # Une ligne vide indique la fin d’un bloc d’informations sur un hôte
         if line == "" and current_ip:
