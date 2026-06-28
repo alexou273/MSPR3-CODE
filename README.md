@@ -83,7 +83,7 @@ Le menu principal s'affiche :
 ```
 ==================================================
    NTL-SysToolbox - NordTransit Logistics
-   Outil de diagnostic et supervision v1.0
+   Outil de diagnostic et supervision v1.1
 ==================================================
 
 === MENU PRINCIPAL ===
@@ -143,13 +143,18 @@ Inventorie le réseau et qualifie le statut de support des systèmes d'exploitat
 **Format du fichier CSV d'inventaire** (colonnes `os` et `version`) :
 ```csv
 os,version
+debian,13
 ubuntu,20.04
-debian,11
 windowsserver,2022
 windows,10-21h2-w
+windows,2022
 ```
 
 Les noms d'OS correspondent aux identifiants de l'API endoflife.date (`ubuntu`, `debian`, `windows`, `windowsserver`, etc.).
+
+Deux fichiers d'exemple sont fournis dans `data/` :
+- `systems.csv` — jeu de démonstration
+- `inventaire_ntl.csv` — inventaire de référence basé sur l'infrastructure de NTL
 
 Les rapports sont générés dans `results/` :
 - `eol_results.json` — données brutes horodatées
@@ -172,11 +177,11 @@ Les rapports sont générés dans `results/` :
 
 | Dossier | Contenu |
 |---------|---------|
-| `logs/` | Fichiers JSON horodatés des résultats de diagnostic |
+| `logs/` | Fichiers JSON horodatés des résultats de diagnostic et de sauvegarde |
 | `sauvegardes/` | Dumps SQL (`.sql`) et exports CSV (`.csv`) |
 | `results/` | Rapports d'audit (JSON, HTML, scan réseau) |
 
-Ces dossiers sont créés automatiquement au premier lancement et sont exclus du dépôt Git.
+Ces dossiers sont créés automatiquement au premier lancement. Tous trois figurent dans le `.gitignore` (`logs/`, `sauvegardes/`, `results/`) et ne sont donc jamais versionnés.
 
 ---
 
@@ -188,6 +193,9 @@ MSPR3-CODE/
 ├── requirements.txt         # Dépendances Python
 ├── .env.example             # Modèle de configuration (à copier en .env)
 ├── .gitignore
+├── data/
+│   ├── systems.csv          # Jeu de démonstration pour l'audit
+│   └── inventaire_ntl.csv   # Inventaire de référence NTL
 └── modules/
     ├── diagnostic.py        # Module Diagnostic (AD/DNS, MySQL, système)
     ├── sauvegarde.py        # Module Sauvegarde WMS (SQL, CSV, rotation)
