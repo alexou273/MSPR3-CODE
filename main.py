@@ -231,7 +231,7 @@ def menu_principal():
     """Menu principal : choix du module."""
     print("=" * 50)
     print("   NTL-SysToolbox - NordTransit Logistics")
-    print("   Outil de diagnostic et supervision v1.0")
+    print("   Outil de diagnostic et supervision v1.1")
     print("=" * 50)
 
     while True:
