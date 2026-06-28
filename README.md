@@ -83,7 +83,7 @@ Le menu principal s'affiche :
 ```
 ==================================================
    NTL-SysToolbox - NordTransit Logistics
-   Outil de diagnostic et supervision v1.1
+   Outil de diagnostic et supervision v1.2
 ==================================================
 
 === MENU PRINCIPAL ===

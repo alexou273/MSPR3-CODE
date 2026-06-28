@@ -168,7 +168,7 @@ def export_html(data, filename="eol_report.html"):
         </tr>{lignes}
     </table>
 
-    <p class="pied">NTL-SysToolbox v1.1</p>
+    <p class="pied">NTL-SysToolbox v1.2</p>
 </body>
 </html>"""
 
